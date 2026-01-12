@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="/src/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF to Image Converter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>PDF to <span class="gradient-text">Image</span></h1>
+      <p>Convert your documents with ease</p>
+    </header>
+
+    <main>
+      <div class="card glass">
+        <div class="dashboard-grid">
+
+          <!-- LEFT COLUMN: FILES -->
+          <div class="col-left">
+            <label class="section-title">Input Files</label>
+            <button id="select-files-btn" class="btn secondary">
+              <span class="icon">📄</span> Select PDFs
+            </button>
+
+            <div class="file-table-container">
+              <table id="file-table">
+                <thead>
+                  <tr>
+                    <th width="50%">File</th>
+                    <th width="25%">Status</th>
+                    <th width="25%">Progress</th>
+                  </tr>
+                </thead>
+                <tbody id="file-table-body">
+                  <tr class="empty-state">
+                    <td colspan="3">No files selected</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: CONTROLS -->
+          <div class="col-right">
+
+            <!-- SECTION: OUTPUT -->
+            <div class="section">
+              <label class="section-title">Output Directory</label>
+              <div class="row">
+                <input type="text" id="output-dir" readonly placeholder="Destination..." />
+                <button id="select-dir-btn" class="btn icon-only" title="Select Folder">
+                  📂
+                </button>
+              </div>
+              <button id="open-output-btn" class="btn secondary hidden" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                <span class="icon">↗️</span> Open Folder
+              </button>
+            </div>
+
+            <!-- SECTION: SETTINGS -->
+            <div class="settings-grid">
+              <div class="section">
+                <label class="section-title">Format</label>
+                <div class="custom-select">
+                  <select id="format-select">
+                    <option value="jpg">JPG (Image)</option>
+                    <option value="png">PNG (Lossless)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="section">
+                <label class="section-title">Quality</label>
+                <div class="custom-select">
+                  <select id="scale-select">
+                    <option value="1.0">Screen (1x)</option>
+                    <option value="2.0" selected>High (2x)</option>
+                    <option value="4.0">Print (4x)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- SECTION: ACTION -->
+            <div style="margin-top: auto;">
+              <button id="convert-btn" class="btn primary" disabled>
+                Convert Now
+              </button>
+
+              <div id="status-container" class="status hidden">
+                <div class="spinner"></div>
+                <p id="status-msg" style="font-size: 0.8rem;">Processing...</p>
+              </div>
+            </div>
+
+          </div> <!-- End Right Col -->
+
+        </div> <!-- End Dashboard Grid -->
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
+</html>
