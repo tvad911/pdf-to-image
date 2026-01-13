@@ -43,6 +43,41 @@ async fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+fn parse_page_range(range_str: &str, total_pages: u16) -> Vec<usize> {
+    if range_str.trim().is_empty() {
+        return (0..total_pages as usize).collect();
+    }
+
+    let mut pages = Vec::new();
+    for part in range_str.split(',') {
+        let part = part.trim();
+        if part.contains('-') {
+            let bounds: Vec<&str> = part.split('-').collect();
+            if bounds.len() == 2 {
+                if let (Ok(start), Ok(end)) = (
+                    bounds[0].trim().parse::<usize>(),
+                    bounds[1].trim().parse::<usize>(),
+                ) {
+                    let s = start.saturating_sub(1);
+                    let e = (end as usize).min(total_pages as usize);
+                    for i in s..e {
+                        pages.push(i);
+                    }
+                }
+            }
+        } else if let Ok(p) = part.parse::<usize>() {
+            if p > 0 && p <= total_pages as usize {
+                pages.push(p - 1);
+            }
+        }
+    }
+
+    // Remote duplicates and sort
+    pages.sort_unstable();
+    pages.dedup();
+    pages
+}
+
 #[tauri::command]
 fn convert_pdf(
     window: Window,
@@ -50,9 +85,10 @@ fn convert_pdf(
     output_dir: String,
     format: String,
     scale: f32,
+    page_range: String,
+    merge: bool,
+    quality: u8,
 ) -> Result<String, String> {
-    // Try to bind to the library.
-    // We try multiple common locations relative to the binary or system.
     let pdfium = Pdfium::new(
         Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./src-tauri/")))
@@ -62,23 +98,10 @@ fn convert_pdf(
             .map_err(|e| format!("Failed to load PDFium library: {}. \n\nTips: \n1. Install libpdfium (e.g., 'sudo apt install libpdfium-dev' on Linux). \n2. Or download the shared library from GitHub and place it next to the app executable.", e))?
     );
 
-    // Load system fonts to support non-embedded characters (e.g., Vietnamese)
-    // pdfium-render 0.8+ allows configuring fonts via ExternalFontMapper or similar,
-    // but the simplest way on Linux with the binary is often automatic if fontconfig is present.
-    // However, since we need to be explicit, let's try to pass standard paths if the API allows.
-    // If we can't find the exact API for this version, we will assume standard loading.
-
-    // NOTE: Based on common pdfium-render usage, there isn't always a direct "use_system_fonts" helper
-    // on the Pdfium struct itself without checking `pdfium.fonts()`.
-    // Let's try to see if we can get the font config or just skip this if not strictly needed by the crate version.
-    // BUT since the user has an error, we MUST do something.
-    // Let's rely on `env::set_var` for FONTCONFIG_PATH as a fallback if the crate doesn't expose it easily.
     std::env::set_var("FONTCONFIG_PATH", "/etc/fonts");
 
     for path_str in input_paths {
         let path = Path::new(&path_str);
-
-        // Notify: Processing started for file
         let filename = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -94,56 +117,76 @@ fn convert_pdf(
             },
         );
 
-        // Load the document
-        // Capture error to emit "error" status
         let document_res = pdfium.load_pdf_from_file(&path_str, None);
 
         match document_res {
             Ok(document) => {
-                let total_pages = document.pages().len();
+                let total_pages_in_doc = document.pages().len();
+                let target_pages = parse_page_range(&page_range, total_pages_in_doc);
+                let total_work = target_pages.len();
+
+                if total_work == 0 {
+                    let _ = window.emit(
+                        "file_status",
+                        FileStatusPayload {
+                            filename: filename.to_string(),
+                            status: "error".into(),
+                            error: Some("No valid pages selected in range".into()),
+                            output_path: None,
+                        },
+                    );
+                    continue;
+                }
+
+                let mut rendered_images = Vec::new();
                 let mut last_output = String::new();
 
-                // Render each page
-                for (i, page) in document.pages().iter().enumerate() {
-                    // Emit progress
+                for (idx, &page_index) in target_pages.iter().enumerate() {
                     let _ = window.emit(
                         "progress",
                         ProgressPayload {
                             filename: filename.to_string(),
-                            current: i as usize + 1,
-                            total: total_pages as usize,
+                            current: idx + 1,
+                            total: total_work,
                         },
                     );
 
-                    // Let's get page size to maintain aspect ratio
-                    let width = page.width().value;
-                    let height = page.height().value;
+                    if let Ok(page) = document.pages().get(page_index as u16) {
+                        let render_width = (page.width().value * scale) as i32;
+                        let render_height = (page.height().value * scale) as i32;
 
-                    // Use provided scale
-                    let render_width = (width * scale) as i32;
-                    let render_height = (height * scale) as i32;
-
-                    let bitmap_res = page.render(render_width, render_height, None);
-                    match bitmap_res {
-                        Ok(bitmap) => {
+                        if let Ok(bitmap) = page.render(render_width, render_height, None) {
                             let image = bitmap.as_image();
-                            let ext = if format.to_lowercase() == "png" {
-                                "png"
-                            } else {
-                                "jpg"
-                            };
-                            let output_path = Path::new(&output_dir).join(format!(
-                                "{}_page_{}.{}",
-                                filename,
-                                i + 1,
-                                ext
-                            ));
 
-                            match image.save(&output_path) {
-                                Ok(_) => {
-                                    last_output = output_path.to_string_lossy().to_string();
-                                }
-                                Err(e) => {
+                            if merge {
+                                rendered_images.push(image);
+                            } else {
+                                let ext = if format.to_lowercase() == "png" {
+                                    "png"
+                                } else {
+                                    "jpg"
+                                };
+                                let suffix = if total_work > 1 {
+                                    format!("_page_{}", page_index + 1)
+                                } else {
+                                    "".to_string()
+                                };
+                                let out_path = Path::new(&output_dir)
+                                    .join(format!("{}{}.{}", filename, suffix, ext));
+
+                                let save_res = if ext == "jpg" {
+                                    let mut file = std::fs::File::create(&out_path)
+                                        .map_err(|e| e.to_string())?;
+                                    let mut encoder =
+                                        image::codecs::jpeg::JpegEncoder::new_with_quality(
+                                            &mut file, quality,
+                                        );
+                                    encoder.encode_image(&image).map_err(|e| e.to_string())
+                                } else {
+                                    image.save(&out_path).map_err(|e| e.to_string())
+                                };
+
+                                if let Err(e) = save_res {
                                     let _ = window.emit(
                                         "file_status",
                                         FileStatusPayload {
@@ -153,24 +196,66 @@ fn convert_pdf(
                                             output_path: None,
                                         },
                                     );
+                                } else {
+                                    last_output = out_path.to_string_lossy().to_string();
                                 }
                             }
                         }
-                        Err(e) => {
+                    }
+                }
+
+                if merge && !rendered_images.is_empty() {
+                    let total_width = rendered_images
+                        .iter()
+                        .map(|img| img.width())
+                        .max()
+                        .unwrap_or(0);
+                    let total_height: u32 = rendered_images.iter().map(|img| img.height()).sum();
+
+                    if total_width > 0 && total_height > 0 {
+                        let mut combined =
+                            image::DynamicImage::new_rgba8(total_width, total_height);
+                        let mut current_y = 0;
+                        for img in rendered_images {
+                            image::imageops::replace(&mut combined, &img, 0, i64::from(current_y));
+                            current_y += img.height();
+                        }
+
+                        let ext = if format.to_lowercase() == "png" {
+                            "png"
+                        } else {
+                            "jpg"
+                        };
+                        let out_path =
+                            Path::new(&output_dir).join(format!("{}_merged.{}", filename, ext));
+
+                        let save_res = if ext == "jpg" {
+                            let mut file =
+                                std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+                            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+                                &mut file, quality,
+                            );
+                            encoder.encode_image(&combined).map_err(|e| e.to_string())
+                        } else {
+                            combined.save(&out_path).map_err(|e| e.to_string())
+                        };
+
+                        if let Err(e) = save_res {
                             let _ = window.emit(
                                 "file_status",
                                 FileStatusPayload {
                                     filename: filename.to_string(),
                                     status: "error".into(),
-                                    error: Some(format!("Render error: {}", e)),
+                                    error: Some(format!("Merge save error: {}", e)),
                                     output_path: None,
                                 },
                             );
+                        } else {
+                            last_output = out_path.to_string_lossy().to_string();
                         }
                     }
                 }
 
-                // Notify: Success
                 let _ = window.emit(
                     "file_status",
                     FileStatusPayload {

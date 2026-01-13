@@ -77,13 +77,33 @@
               </div>
 
               <div class="section">
-                <label class="section-title">Quality</label>
+                <label class="section-title">Quality (Resolution)</label>
                 <div class="custom-select">
                   <select id="scale-select">
                     <option value="1.0">Screen (1x)</option>
                     <option value="2.0" selected>High (2x)</option>
                     <option value="4.0">Print (4x)</option>
                   </select>
+                </div>
+              </div>
+
+              <div class="section">
+                <label class="section-title">Page Range</label>
+                <input type="text" id="page-range" placeholder="e.g. 1,3,5-10 (Leave blank for all)" />
+              </div>
+
+              <div class="section" id="quality-section" style="display: none;">
+                <label class="section-title">JPG Compression: <span id="quality-val">90</span>%</label>
+                <input type="range" id="quality-slider" min="10" max="100" value="90" step="5" style="width: 100%;" />
+              </div>
+
+              <div class="section">
+                <div class="toggle-container">
+                    <label class="section-title" style="margin-bottom: 0;">Merge into one image</label>
+                    <label class="switch">
+                        <input type="checkbox" id="merge-checkbox">
+                        <span class="slider round"></span>
+                    </label>
                 </div>
               </div>
             </div>

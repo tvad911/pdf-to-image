@@ -41,9 +41,33 @@ const scaleSelect = document.getElementById("scale-select") as HTMLSelectElement
 const statusContainer = document.getElementById("status-container") as HTMLDivElement;
 const statusMsg = document.getElementById("status-msg") as HTMLParagraphElement;
 const spinner = document.querySelector(".spinner") as HTMLDivElement;
+const pageRangeInp = document.getElementById("page-range") as HTMLInputElement;
+const qualitySlider = document.getElementById("quality-slider") as HTMLInputElement;
+const qualityVal = document.getElementById("quality-val") as HTMLSpanElement;
+const qualitySection = document.getElementById("quality-section") as HTMLDivElement;
+const mergeCheckbox = document.getElementById("merge-checkbox") as HTMLInputElement;
+
+// Handle Quality Visibility and Label
+formatSelect.addEventListener("change", () => {
+  if (formatSelect.value === "jpg") {
+    qualitySection.style.display = "block";
+  } else {
+    qualitySection.style.display = "none";
+  }
+});
+
+// Initial show/hide quality
+if (formatSelect.value === "jpg") {
+  qualitySection.style.display = "block";
+}
+
+qualitySlider.addEventListener("input", () => {
+  qualityVal.textContent = qualitySlider.value;
+});
 
 // Helper to get basenames
 const getBasename = (path: string) => path.split(/[\\/]/).pop() || "unknown";
+// ... (renderTable and updateUI remain the same, adding them inside replace_file_content if needed)
 
 // Helper to render table
 function renderTable() {
@@ -54,11 +78,7 @@ function renderTable() {
   }
 
   selectedFiles.forEach((path) => {
-    const filename = getBasename(path).replace(".pdf", ""); // Simple matching, better use exact logic matching backend
-    // Actually backend sends filename without extension in events usually (filestem). 
-    // Let's use the full basename for display, and rely on filename from event matching.
-
-    // Key for map: we use the filename stem to match events from backend
+    const filename = getBasename(path);
     const stem = filename.replace(/\.pdf$/i, "");
 
     // Initial state if not exists
@@ -78,7 +98,7 @@ function renderTable() {
 
     // Column 1: File
     const tdName = document.createElement("td");
-    tdName.innerHTML = `<span class="icon">📄</span> ${filename}.pdf`;
+    tdName.innerHTML = `<span class="icon">📄</span> ${filename}`;
     tr.appendChild(tdName);
 
     // Column 2: Status
@@ -130,7 +150,6 @@ async function setupListeners() {
     if (state) {
       state.progressCurrent = current;
       state.progressTotal = total;
-      // Force status to processing if we get progress
       if (state.status !== "processing") state.status = "processing";
       renderTable();
     }
@@ -143,8 +162,6 @@ async function setupListeners() {
       state.status = status;
       if (error) state.error = error;
       renderTable();
-
-      // Show open button if success
       if (status === "success") {
         openOutputBtn.classList.remove("hidden");
       }
@@ -161,7 +178,6 @@ selectFilesBtn.addEventListener("click", async () => {
 
   if (result) {
     selectedFiles = result as string[];
-    // Reset states
     fileStates.clear();
     openOutputBtn.classList.add("hidden");
     statusContainer.classList.add("hidden");
@@ -190,12 +206,11 @@ convertBtn.addEventListener("click", async () => {
   if (selectedFiles.length === 0 || !outputDirectory) return;
 
   statusContainer.classList.remove("hidden");
-  spinner.style.display = "block"; // Show spinner
+  spinner.style.display = "block";
   convertBtn.disabled = true;
   statusMsg.textContent = "Processing...";
   statusMsg.style.color = "var(--text-muted)";
 
-  // Reset all to queued
   fileStates.forEach(s => { s.status = "queued"; s.error = undefined; });
   renderTable();
 
@@ -204,16 +219,19 @@ convertBtn.addEventListener("click", async () => {
       inputPaths: selectedFiles,
       outputDir: outputDirectory,
       format: formatSelect.value,
-      scale: parseFloat(scaleSelect.value)
+      scale: parseFloat(scaleSelect.value),
+      pageRange: pageRangeInp.value,
+      merge: mergeCheckbox.checked,
+      quality: parseInt(qualitySlider.value)
     });
     statusMsg.textContent = "Batch Completed! ✅";
-    statusMsg.style.color = "#4ade80"; // green
+    statusMsg.style.color = "#4ade80";
   } catch (error) {
     console.error(error);
     statusMsg.textContent = `Error: ${error} ❌`;
-    statusMsg.style.color = "#f87171"; // red
+    statusMsg.style.color = "#f87171";
   } finally {
     convertBtn.disabled = false;
-    spinner.style.display = "none"; // Hide spinner immediately
+    spinner.style.display = "none";
   }
 });
