@@ -1,6 +1,6 @@
 use pdfium_render::prelude::*;
 use std::path::Path;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 
 #[derive(Clone, serde::Serialize)]
 struct ProgressPayload {
@@ -89,8 +89,17 @@ fn convert_pdf(
     merge: bool,
     quality: u8,
 ) -> Result<String, String> {
+    let resource_dir = window
+        .app_handle()
+        .path()
+        .resource_dir()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
+    let binaries_dir = resource_dir.join("binaries");
+    let binaries_dir_str = binaries_dir.to_string_lossy();
+
     let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./"))
+        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&binaries_dir_str))
+            .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./")))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./src-tauri/")))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./target/release/")))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./target/debug/")))
