@@ -98,7 +98,7 @@ fn convert_pdf(
     let binaries_dir_str = binaries_dir.to_string_lossy();
 
     let pdfium = Pdfium::new(
-        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&binaries_dir_str))
+        Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(&binaries_dir))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./")))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./src-tauri/")))
             .or_else(|_| Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path("./target/release/")))
